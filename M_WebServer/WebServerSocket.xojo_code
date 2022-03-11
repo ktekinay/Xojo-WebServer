@@ -9,6 +9,8 @@ Inherits SSLSocket
 		  
 		  AddHandler ProcessTimer.Action, WeakAddressOf ProcessTimer_Action
 		  
+		  Request = new WebServerRequest_MTC
+		  
 		End Sub
 	#tag EndEvent
 
@@ -16,7 +18,6 @@ Inherits SSLSocket
 		Sub DataAvailable()
 		  AddToBuffer self.ReadAll
 		  ProcessTimer.RunMode = Timer.RunModes.Single
-		  ProcessTimer.Reset
 		  
 		End Sub
 	#tag EndEvent
@@ -53,7 +54,22 @@ Inherits SSLSocket
 
 	#tag Method, Flags = &h21
 		Private Function FlushBuffer() As String
-		  var s as string = String.FromArray( Buffer, "" )
+		  var s as string
+		  
+		  select case Buffer.Count
+		  case 0
+		    //
+		    // Nothing to do
+		    //
+		    
+		  case 1
+		    s = Buffer( 0 )
+		    
+		  case else
+		    s = String.FromArray( Buffer, "" )
+		    
+		  end select
+		  
 		  ClearBuffer
 		  return s
 		  
@@ -61,24 +77,130 @@ Inherits SSLSocket
 	#tag EndMethod
 
 	#tag Method, Flags = &h21
+		Private Sub ParseHeaders(rawHeaders As String)
+		  //
+		  // Will parse directly into Request
+		  //
+		  
+		  var lines() as string = rawHeaders.Trim.SplitBytes( EndOfLine.Windows )
+		  
+		  if lines.Count = 0 then
+		    return
+		  end if
+		  
+		  var requestLine as string = lines( 0 ).Trim
+		  var requestLineParts() as string = requestLine.Split( " " )
+		  if requestLineParts.Count <> 3 then
+		    return
+		  end if
+		  
+		  Request.Method = requestLineParts( 0 )
+		  Request.URLPath = requestLineParts( 1 )
+		  Request.Protocol = requestLineParts( 2 )
+		  
+		  //
+		  // Get the rest of the headers
+		  //
+		  var headers as new Dictionary
+		  
+		  for i as integer =  1 to lines.LastIndex
+		    var line as string = lines( i ).Trim
+		    
+		    if line = "" then
+		      continue
+		    end if
+		    
+		    var pos as integer = line.IndexOf( ":" )
+		    #pragma warning "Handle pos = -1"
+		    
+		    var key as string = line.MiddleBytes( 0, pos )
+		    var value as string = line.MiddleBytes( pos + 1 )
+		    headers.Value( key ) = value
+		  next
+		  
+		  Request.Headers = headers
+		  
+		End Sub
+	#tag EndMethod
+
+	#tag Method, Flags = &h21
 		Private Sub ProcessTimer_Action(sender As Timer)
+		  #pragma unused sender
+		  
+		  if IsConnected = false then
+		    //
+		    // Nothing to do
+		    //
+		    return
+		  end if
+		  
+		  const kEOL as string = &u0D + &u0A
+		  const kHeaderDivider as string = kEOL + kEOL
+		  const kNoContentLengthHeader as integer = -999
+		  
 		  if BufferBytes = 0 then
-		    sender.RunMode = Timer.RunModes.Single
+		    //
+		    // DataAvailable will start the timer again
+		    //
 		    return
 		  end if
 		  
 		  var content as string = FlushBuffer
 		  
-		  if Headers is nil then
+		  if Request.Headers is nil then
+		    //
+		    // See if we have the header
+		    //
+		    var headerBreakPos as integer = content.IndexOfBytes( kHeaderDivider )
+		    if headerBreakPos = -1 then
+		      //
+		      // No header yet
+		      //
+		      AddToBuffer content
+		      return
+		    end if
 		    
+		    var rawHeaders as string = content.MiddleBytes( 0, headerBreakPos )
+		    content = content.MiddleBytes( headerBreakPos + 2 )
+		    
+		    ParseHeaders( rawHeaders )
+		    
+		    var headers as Dictionary = Request.Headers
+		    if headers is nil then
+		      //
+		      // Should have been headers
+		      //
+		      #pragma warning "Return the appropriate response"
+		      return
+		    end if
+		    
+		    ContentLength = headers.Lookup( "Content-Length", kNoContentLengthHeader ).IntegerValue
+		    
+		    if ContentLength = kNoContentLengthHeader then
+		      #pragma warning "Return the appropriate response"
+		      return
+		    end if
 		  end if
 		  
 		  if ContentLength <> -1 and content.Bytes = ContentLength then
 		    //
-		    // We've gotten the request
+		    // We've gotten the entire request
 		    //
+		    var server as WebServer_MTC = self.Server
+		    if server is nil then
+		      //
+		      // We did this for naught
+		      //
+		      self.Close
+		      return
+		    end if
+		    
+		    Request.Body = content
 		    
 		  else
+		    //
+		    // We haven't gotten all the content yet
+		    //
 		    AddToBuffer content
 		    
 		  end if
@@ -100,15 +222,15 @@ Inherits SSLSocket
 	#tag EndProperty
 
 	#tag Property, Flags = &h21
-		Private Headers() As Dictionary
-	#tag EndProperty
-
-	#tag Property, Flags = &h21
 		Private mServerWR As WeakRef
 	#tag EndProperty
 
 	#tag Property, Flags = &h21
 		Private ProcessTimer As Timer
+	#tag EndProperty
+
+	#tag Property, Flags = &h0
+		Request As WebServerRequest_MTC
 	#tag EndProperty
 
 	#tag ComputedProperty, Flags = &h0

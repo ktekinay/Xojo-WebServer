@@ -6,14 +6,19 @@ Inherits TestGroup
 		  self.StopTestOnFail = true
 		  
 		  var urlPattern as string = "1/:2/3/:4/5/"
+		  
 		  var r as new WebServerRoute_MTC( urlPattern, WebServer_MTC.kMethodGet, nil, "tag" )
 		  
 		  var url as string = "/1/2/3/4/5"
-		  var request as WebServerRequest_MTC = r.Match( url, WebServer_MTC.kMethodGet )
+		  var request as new WebServerRequest_MTC
+		  request.Method = WebServer_MTC.kMethodGet
+		  request.URLPath = url
 		  
-		  Assert.IsTrue request isa object, "Returned a Dictionary"
+		  Assert.IsTrue r.Match( request)
 		  
 		  var params as Dictionary = request.Parameters
+		  Assert.IsTrue params isa object, "Returned a Dictionary"
+		  
 		  Assert.IsFalse params.HasKey( "1" )
 		  Assert.IsTrue params.HasKey( "2" )
 		  Assert.IsFalse params.HasKey( "3" )
@@ -28,11 +33,12 @@ Inherits TestGroup
 		  Assert.AreEqual WebServer_MTC.kMethodGet, request.Method
 		  Assert.AreEqual "tag", request.RouteTag.StringValue
 		  
-		  request = r.Match( "x/y/z", WebServer_MTC.kMethodGet )
-		  Assert.IsNil request, "Wrong pattern"
+		  request.URLPath = "x/y/z"
+		  Assert.IsFalse r.Match( request ), "Wrong pattern"
 		  
-		  request = r.Match( "/1/2/3/4/5", WebServer_MTC.kMethodPost )
-		  Assert.IsNil request, "Wrong method"
+		  request.URLPath = url
+		  request.Method = WebServer_MTC.kMethodPost
+		  Assert.IsFalse r.Match( request ), "Wrong method"
 		  
 		End Sub
 	#tag EndMethod

@@ -52,10 +52,12 @@ Class WebServerRoute_MTC
 	#tag EndMethod
 
 	#tag Method, Flags = &h0, Description = 49662074686520676976656E2075726C2070617468206D6174636865732C20612044696374696F6E6172792069732072657475726E656420776974682076616C7565732E
-		Function Match(urlPath As String, method As String) As WebServerRequest_MTC
-		  if method <> self.Method then
-		    return nil
+		Function Match(request As WebServerRequest_MTC) As Boolean
+		  if request.Method <> self.Method then
+		    return false
 		  end if
+		  
+		  var urlPath as string = request.URLPath
 		  
 		  if not urlPath.BeginsWith( "/" ) then
 		    urlPath = "/" + urlPath
@@ -64,7 +66,7 @@ Class WebServerRoute_MTC
 		  var match as RegExMatch = Matcher.Search( urlPath )
 		  
 		  if match is nil then
-		    return nil
+		    return false
 		  end if
 		  
 		  var params as new Dictionary
@@ -77,13 +79,10 @@ Class WebServerRoute_MTC
 		    params.Value( key ) = value
 		  next
 		  
-		  var request as new WebServerRequest_MTC
-		  request.Method = method
 		  request.Parameters = params
 		  request.RouteTag = self.RouteTag
-		  request.URLPath = urlPath
 		  
-		  return request
+		  return true
 		  
 		End Function
 	#tag EndMethod
